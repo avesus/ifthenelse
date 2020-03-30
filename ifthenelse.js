@@ -225,7 +225,9 @@ const update_cycle = (debug) => {
 		const index = parseInt(txt_index);
 
 		const block = memory[index];
-		console.debug(`in [${ index }] ${ block[0] } ? ${ block[1] } : ${ block[2] }`);
+		if (debug) {
+			console.debug(`in [${ index }] ${ block[0] } ? ${ block[1] } : ${ block[2] }`);
+		}
 
 		const dirty_block = dirty_blocks[index];
 
@@ -245,7 +247,9 @@ const update_cycle = (debug) => {
 
 			if (prev_mux_value !== next_value) { // || first_time) {
 				evaluation_changed = true;
-				console.log(`------------ MUX ${ index } changed ------------`);
+				if (debug) {
+					console.debug(`------------ MUX ${ index } changed ------------`);
+				}
 				emulate_internal_ff_delay.push(index);
 			}
 		}
@@ -393,26 +397,21 @@ const bit = (label, param) => {
 	throw Error('wrong label');
 };
 
-
-// Manual memory transfer operation to provide an external IO input.
-const write_a_bit = (value, { at, label, param }) => {
-	const offset = bit(label, param);
-	// console.log(`at ${ at} offset ${ offset }`);
-
-	/*
-	const prev_value = memory[at][offset];
-	if (value !== prev_value) {
-		memory[at][offset] = value;
-
-		update_dirty_block(at, offset);
-	}
-	*/
+const direct_bit = (value, { at, offset }) => {
 
 	const prev_value = memory[at][offset];
 	if (value != prev_value) {
 		memcpy_list.push([ offset, at ]);
 	}
+};
 
+// Manual memory transfer operation to provide an external IO input.
+const write_a_bit = (value, { at, label, param }) => {
+	const offset = bit(label, param);
+
+	direct_bit(value, { at, offset });
+
+	// console.log(`at ${ at} offset ${ offset }`);
 	// console.log('WRITE A BIT COPY LIST:', memcpy_list);
 };
 
@@ -472,6 +471,8 @@ add_instruction({ at: 6, ...MUX, output1: { to: bit('If'), at: 7 }});
 add_instruction({ at: 7, ...FANOUT, output1: { to: 0, at: 0 } });
 
 
+// Invertor targeting itself
+add_instruction({ at: 8, ...NOT, output1: { to: bit('If'), at: 8 }});
 
 
 const results = (memory) => ({
@@ -489,15 +490,29 @@ const results = (memory) => ({
 	b_2: memory[6][bit('If')],
 
 	xor: memory[7][bit('If')],
+
+	generator: memory[8][bit('If')],
 });
 
+let total_ticks = 0;
 
+const dump_memory = () => {
+	memory.forEach((instr, index) => {
+		const target1 = [ ptr1_offset(index, memory), ptr1_index(index, memory) ];
+		const target2 = [ ptr2_offset(index, memory), ptr2_index(index, memory) ];
+		console.log(`[${ index }] ${ instr[0] } ? ${ instr[1] } : ${ instr[2] } -> (${target1[1]}:${target1[0]}, ${target2[1]}:${target2[0]})`);
+	});
+};
 
 const run_clocks = (clocks, { debug } = {}) => {
 
 	while (memcpy_list.length) {
+		++total_ticks;
 		console.log(memcpy_list);
 		update_cycle(debug);
+
+
+
 		--clocks;
 		if (!clocks) {
 			break;
@@ -505,7 +520,7 @@ const run_clocks = (clocks, { debug } = {}) => {
 	}
 
 	console.log('\n');
-	console.log(results(memory));
+	// console.log(results(memory));
 }
 
 
@@ -524,4 +539,53 @@ write_a_bit(1, { at: 2, label: 'If' });
 run_clocks(4);
 
 //run_clocks(4, { debug: true });
+
+run_clocks(1);
+run_clocks(1);
+run_clocks(1);
+
+dump_memory();
+console.log('------------------------- Pipeline');
+
+write_a_bit(0, { at: 1, label: 'If' });
+write_a_bit(1, { at: 2, label: 'If' });
+run_clocks(1);
+
+write_a_bit(0, { at: 1, label: 'If' });
+write_a_bit(0, { at: 2, label: 'If' });
+run_clocks(1);
+
+write_a_bit(1, { at: 1, label: 'If' });
+write_a_bit(0, { at: 2, label: 'If' });
+run_clocks(1);
+
+write_a_bit(1, { at: 1, label: 'If' });
+write_a_bit(1, { at: 2, label: 'If' });
+run_clocks(1);
+
+run_clocks(1);
+run_clocks(1);
+
+run_clocks(1);
+
+let zeroes = 0;
+let ones = 0;
+
+memory.forEach((elt, index) => elt.forEach((value, offset) => {
+	const random_value = Math.floor(Math.random() * 2);
+	if (random_value) {
+		++ones;
+	} else {
+		++zeroes;
+	}
+
+	direct_bit(random_value, { at: index, offset })
+}));
+
+run_clocks(4000);
+
+dump_memory();
+
+console.log(`Program ran ${ total_ticks } ticks. ${ memcpy_list.length } memcpy instructions left in buffer. RNG probability was ${
+	zeroes * (100 / (zeroes + ones)) } / ${ ones * (100 / (zeroes + ones)) } zeroes/ones.`);
 
