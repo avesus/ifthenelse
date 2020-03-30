@@ -1,10 +1,19 @@
 'use strict';
 
-const INDEX_SIZE = 6;
-const OFFSET_SIZE = 5;
+const INDEX_SIZE = 5; //19; // 16; // 6;
+const OFFSET_SIZE = 5; // 6; // 5;
 const BLOCK_SIZE = 3 + 2 * (OFFSET_SIZE + INDEX_SIZE);
 
-const TOTAL_ENTRIES = 64;
+if (Math.pow(2, OFFSET_SIZE) < BLOCK_SIZE) {
+	throw Error(`Increase OFFSET_SIZE to fit addresses to the index space
+		BLOCK_SIZE is ${ BLOCK_SIZE }
+		OFFSET_SIZE can only address ${ Math.pow(2, OFFSET_SIZE) } bits.
+	`);
+}
+
+const TOTAL_ENTRIES = Math.pow(2, INDEX_SIZE); // 64;
+
+console.log(TOTAL_ENTRIES);
 
 // Total size: 1,600 bits (200 bytes) organized in 64 blocks made of a 25-bits-wide word each
 let memory = [
@@ -65,6 +74,18 @@ let memory = [
 ];
 
 const ptr1_index = (index, memory) => {
+
+	let res = 0;
+
+	for (let index_bit = 0; index_bit < INDEX_SIZE; ++index_bit) {
+		const pow_2 = Math.pow(2, index_bit);
+		res += pow_2 * (memory[index][3 + OFFSET_SIZE + index_bit]);
+	}
+
+	return res;
+/*
+
+
 	const res = [
 		memory[index][3 + OFFSET_SIZE + 0],
 		memory[index][3 + OFFSET_SIZE + 1],
@@ -80,10 +101,21 @@ const ptr1_index = (index, memory) => {
 		   res[3] * 8  +
 		   res[4] * 16 +
 		   res[5] * 32;
+	*/
 }
 
 
 const ptr2_index = (index, memory) => {
+
+	let res = 0;
+
+	for (let index_bit = 0; index_bit < INDEX_SIZE; ++index_bit) {
+		const pow_2 = Math.pow(2, index_bit);
+		res += pow_2 * (memory[index][3 + INDEX_SIZE + 2 * OFFSET_SIZE + index_bit]);
+	}
+
+	return res;
+/*
 	const res = [
 		memory[index][3 + INDEX_SIZE + 2 * OFFSET_SIZE + 0],
 		memory[index][3 + INDEX_SIZE + 2 * OFFSET_SIZE + 1],
@@ -99,10 +131,21 @@ const ptr2_index = (index, memory) => {
 		   res[3] * 8  +
 		   res[4] * 16 +
 		   res[5] * 32;
+*/
 }
 
 
 const ptr1_offset = (index, memory) => {
+
+	let res = 0;
+
+	for (let index_bit = 0; index_bit < OFFSET_SIZE; ++index_bit) {
+		const pow_2 = Math.pow(2, index_bit);
+		res += pow_2 * (memory[index][3 + index_bit]);
+	}
+
+	return res;
+/*
 	const res = [
 		memory[index][3 + 0],
 		memory[index][3 + 1],
@@ -116,9 +159,19 @@ const ptr1_offset = (index, memory) => {
 		   res[2] * 4  +
 		   res[3] * 8  +
 		   res[4] * 16;
+	*/
 }
 
 const ptr2_offset = (index, memory) => {
+	let res = 0;
+
+	for (let index_bit = 0; index_bit < OFFSET_SIZE; ++index_bit) {
+		const pow_2 = Math.pow(2, index_bit);
+		res += pow_2 * (memory[index][3 + INDEX_SIZE + OFFSET_SIZE + index_bit]);
+	}
+
+	return res;
+	/*
 	const res = [
 		memory[index][3 + INDEX_SIZE + OFFSET_SIZE + 0],
 		memory[index][3 + INDEX_SIZE + OFFSET_SIZE + 1],
@@ -132,6 +185,7 @@ const ptr2_offset = (index, memory) => {
 		   res[2] * 4  +
 		   res[3] * 8  +
 		   res[4] * 16;
+	*/
 }
 
 // Cache of MUX evaluations. In real world just flip-flops.
@@ -197,6 +251,11 @@ const update_cycle = (debug) => {
 	for (let memcpy_instr = 0; memcpy_instr < memcpy_list.length; ++memcpy_instr) {
 		const [offset, index] = memcpy_list[memcpy_instr];
 
+		if (index >= TOTAL_ENTRIES) {
+			console.log(`Error address ${ index }`);
+			continue;
+		}
+
 		const block = memory[index];
 
 		if (debug) {
@@ -257,16 +316,24 @@ const update_cycle = (debug) => {
 		if (evaluation_changed || dirty_block.ptr1) {
 			// Schedule one or two memcpy operations (flip a bit operations)
 			const target1 = [ ptr1_offset(index, memory), ptr1_index(index, memory) ];
+			if (target1[1] < TOTAL_ENTRIES && target1[0] < BLOCK_SIZE) {
 
-			// Non-zero pointers will be updated;
-			// The cause is MUX result has changed.
-			// If pointers themselves have changed,
-			// it also should cause an update
-			if (target1[0] || target1[1]) {
-				// TODO FIXME BUGBUG a hack to access memory existing value
-				const prev_value = memory[target1[1]][target1[0]];
-				if (next_value !== prev_value) {
-					memcpy_list.push(target1);
+				// Non-zero pointers will be updated;
+				// The cause is MUX result has changed.
+				// If pointers themselves have changed,
+				// it also should cause an update
+				if (target1[0] || target1[1]) {
+					// TODO FIXME BUGBUG a hack to access memory existing value
+					let prev_value;
+					try {
+						prev_value = memory[target1[1]][target1[0]];
+					} catch (err) {
+						console.log(`index ${ target1[1] } offset ${ target1[0] }`, memory[index]);
+						throw err;
+					}
+					if (next_value !== prev_value) {
+						memcpy_list.push(target1);
+					}
 				}
 			}
 		}
@@ -274,12 +341,20 @@ const update_cycle = (debug) => {
 
 		if (evaluation_changed || dirty_block.ptr2) {
 			const target2 = [ ptr2_offset(index, memory), ptr2_index(index, memory) ];
+			if (target2[1] < TOTAL_ENTRIES && target2[0] < BLOCK_SIZE) {
 
-			if (target2[0] || target2[1]) {
-				// TODO FIXME BUGBUG a hack to access memory existing value
-				const prev_value = memory[target2[1]][target2[0]];
-				if (next_value !== prev_value) {
-					memcpy_list.push(target2);
+				if (target2[0] || target2[1]) {
+					// TODO FIXME BUGBUG a hack to access memory existing value
+					let prev_value;
+					try {
+						prev_value = memory[target2[1]][target2[0]];
+					} catch (err) {
+						console.log(`index ${ target2[1] } offset ${ target2[0] }`, memory[index]);
+						throw err;
+					}
+					if (next_value !== prev_value) {
+						memcpy_list.push(target2);
+					}
 				}
 			}
 		}
@@ -399,6 +474,17 @@ const bit = (label, param) => {
 
 const direct_bit = (value, { at, offset }) => {
 
+	if (at >= TOTAL_ENTRIES) {
+		console.log(`Error address ${ at }`);
+		return;
+	}
+
+	if (offset >= BLOCK_SIZE) {
+		console.log(`Error offset ${ offset }`);
+		return;
+	}
+
+
 	const prev_value = memory[at][offset];
 	if (value != prev_value) {
 		memcpy_list.push([ offset, at ]);
@@ -472,7 +558,8 @@ add_instruction({ at: 7, ...FANOUT, output1: { to: 0, at: 0 } });
 
 
 // Invertor targeting itself
-add_instruction({ at: 8, ...NOT, output1: { to: bit('If'), at: 8 }});
+
+// add_instruction({ at: 8, ...NOT, output1: { to: bit('If'), at: 8 }});
 
 
 const results = (memory) => ({
@@ -491,7 +578,7 @@ const results = (memory) => ({
 
 	xor: memory[7][bit('If')],
 
-	generator: memory[8][bit('If')],
+	// generator: memory[8][bit('If')],
 });
 
 let total_ticks = 0;
@@ -508,7 +595,7 @@ const run_clocks = (clocks, { debug } = {}) => {
 
 	while (memcpy_list.length) {
 		++total_ticks;
-		console.log(memcpy_list);
+		// console.log(memcpy_list);
 		update_cycle(debug);
 
 
@@ -519,7 +606,7 @@ const run_clocks = (clocks, { debug } = {}) => {
 		}
 	}
 
-	console.log('\n');
+	// console.log('\n');
 	// console.log(results(memory));
 }
 
@@ -544,7 +631,7 @@ run_clocks(1);
 run_clocks(1);
 run_clocks(1);
 
-dump_memory();
+// dump_memory();
 console.log('------------------------- Pipeline');
 
 write_a_bit(0, { at: 1, label: 'If' });
@@ -568,24 +655,62 @@ run_clocks(1);
 
 run_clocks(1);
 
-let zeroes = 0;
-let ones = 0;
+const crypto = require('crypto');
 
-memory.forEach((elt, index) => elt.forEach((value, offset) => {
-	const random_value = Math.floor(Math.random() * 2);
-	if (random_value) {
-		++ones;
-	} else {
-		++zeroes;
+let max_left = 0;
+
+const run_random_program = function () {
+
+	total_ticks = 0;
+
+	let zeroes = 0;
+	let ones = 0;
+
+	const buf = crypto.randomBytes(TOTAL_ENTRIES * BLOCK_SIZE);
+	let random_byte_index = 0;
+
+	// console.log(`BLOCK_SIZE: ${ BLOCK_SIZE }`, TOTAL_ENTRIES * BLOCK_SIZE, random_byte_index);
+
+	memory.forEach((elt, index) => {
+		elt.forEach((value, offset) => {
+
+			// console.log(index, offset);
+
+			// const random_value = Math.floor(Math.random() * 2);
+			const random_value = buf.readUInt8(random_byte_index++) & 0x08;
+
+
+			if (random_value) {
+				++ones;
+			} else {
+				++zeroes;
+			}
+
+			direct_bit(random_value, { at: index, offset })
+		});
+	});
+
+	run_clocks(4000);
+
+	// dump_memory();
+
+
+	if (memcpy_list.length > max_left) {
+		max_left = memcpy_list.length;
+
+		console.log(`Program ran ${ total_ticks } ticks. ${ memcpy_list.length } memcpy instructions left in buffer. RNG probability was ${
+			zeroes * (100 / (zeroes + ones)) } / ${ ones * (100 / (zeroes + ones)) } zeroes/ones.`);
+		console.log(`RAM size: ${ TOTAL_ENTRIES * BLOCK_SIZE / 8 } bytes. If-Then-Else instructions: ${ TOTAL_ENTRIES }.`);
 	}
 
-	direct_bit(random_value, { at: index, offset })
-}));
+	return memcpy_list.length;
 
-run_clocks(4000);
+}
+
+while(memcpy_list.length < 15) {
+	memcpy_list = [];
+	run_random_program();
+}
 
 dump_memory();
-
-console.log(`Program ran ${ total_ticks } ticks. ${ memcpy_list.length } memcpy instructions left in buffer. RNG probability was ${
-	zeroes * (100 / (zeroes + ones)) } / ${ ones * (100 / (zeroes + ones)) } zeroes/ones.`);
 
