@@ -1,6 +1,6 @@
 'use strict';
 
-const INDEX_SIZE = 5; //19; // 16; // 6;
+const INDEX_SIZE = 4; //19; // 16; // 6;
 const OFFSET_SIZE = 5; // 6; // 5;
 const BLOCK_SIZE = 3 + 2 * (OFFSET_SIZE + INDEX_SIZE);
 
@@ -587,7 +587,7 @@ const dump_memory = () => {
 	memory.forEach((instr, index) => {
 		const target1 = [ ptr1_offset(index, memory), ptr1_index(index, memory) ];
 		const target2 = [ ptr2_offset(index, memory), ptr2_index(index, memory) ];
-		console.log(`[${ index }] ${ instr[0] } ? ${ instr[1] } : ${ instr[2] } -> (${target1[1]}:${target1[0]}, ${target2[1]}:${target2[0]})`);
+		console.log(`[${ String(index).padStart(3, ' ') }] ${ instr.join('') }    ${ instr[0] } ? ${ instr[1] } : ${ instr[2] } -> (${target1[1]}:${target1[0]}, ${target2[1]}:${target2[0]})                                    `);
 	});
 };
 
@@ -700,17 +700,27 @@ const run_random_program = function () {
 
 		console.log(`Program ran ${ total_ticks } ticks. ${ memcpy_list.length } memcpy instructions left in buffer. RNG probability was ${
 			zeroes * (100 / (zeroes + ones)) } / ${ ones * (100 / (zeroes + ones)) } zeroes/ones.`);
-		console.log(`RAM size: ${ TOTAL_ENTRIES * BLOCK_SIZE / 8 } bytes. If-Then-Else instructions: ${ TOTAL_ENTRIES }.`);
+		console.log(`RAM size: ${ TOTAL_ENTRIES * (BLOCK_SIZE + 1) / 8 } bytes. If-Then-Else instructions: ${ TOTAL_ENTRIES }.`);
 	}
 
 	return memcpy_list.length;
 
 }
 
-while(memcpy_list.length < 15) {
+while(memcpy_list.length < 8) {
 	memcpy_list = [];
 	run_random_program();
 }
 
-dump_memory();
+console.clear();
 
+for (let demo_loop = 0; demo_loop < 50000; ++demo_loop) {
+	// console.log('\n');
+	process.stdout.cursorTo(0, 0);
+	dump_memory();
+	update_cycle();
+
+}
+
+//console.log('\n');
+//dump_memory();
