@@ -608,8 +608,9 @@ const run_clocks = (clocks, { debug } = {}) => {
 		
 		update_cycle(debug);
 
-	    //process.stdout.cursorTo(0, 0);
-		//dump_memory(9);
+	    process.stdout.cursorTo(0, 0);
+		dump_memory(9);
+
 		// console.log(results(memory));
 
 
@@ -638,7 +639,7 @@ const run_clocks = (clocks, { debug } = {}) => {
 
 console.clear();
 
-/*
+
 const stdin = process.openStdin();
 
 setInterval(() => {
@@ -666,9 +667,7 @@ stdin.addListener('data', text => {
 
 
 	// stdin.pause() // stop reading
-})
-
-*/
+});
 
 
 
@@ -713,7 +712,9 @@ stdin.addListener('data', text => {
 
 
 
-// function commeted_out () {
+
+
+function commeted_out () {
 
 const crypto = require('crypto');
 
@@ -782,7 +783,7 @@ const run_random_program = function () {
 do {
 	memcpy_list = [];
 	run_random_program();
-} while(memcpy_list.length < 7);
+} while(memcpy_list.length < 3);
 
 console.clear();
 
@@ -798,5 +799,5 @@ for (let demo_loop = 0; demo_loop < 50000; ++demo_loop) {
 //console.log('\n');
 //dump_memory();
 
-//}
+}
 
